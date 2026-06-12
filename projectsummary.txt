@@ -1,0 +1,123 @@
+AI Code Review Tool — Week 2 Summary
+=====================================
+
+GOAL: Save every review to a PostgreSQL database and fetch past reviews.
+
+---------------------------------------
+WHAT WE DID STEP BY STEP
+---------------------------------------
+
+1. INSTALLED POSTGRESQL
+   - Installed via Homebrew: brew install postgresql@15
+   - Started the service: brew services start postgresql@15
+   - Created the database: CREATE DATABASE ai_code_review;
+
+2. INSTALLED PRISMA 7
+   - npm i prisma @prisma/client
+   - npx prisma init
+   - Prisma 7 is different from older versions:
+     * URL moved from schema.prisma to prisma.config.ts
+     * Client generates to src/generated/prisma (not node_modules)
+     * Requires an adapter (PrismaPg) to connect to PostgreSQL
+
+3. CONFIGURED prisma.config.ts
+   - This is where the DATABASE_URL is now read from
+   - Import "dotenv/config" at the top so .env loads before Prisma connects
+
+4. DEFINED THE SCHEMA (prisma/schema.prisma)
+   - Created a Review model with these fields:
+     * id           → unique UUID, auto generated
+     * code         → the code that was reviewed
+     * language     → javascript, typescript etc
+     * summary      → one line summary from AI
+     * bugs         → array of bugs (stored as JSON)
+     * improvements → array of improvements (stored as JSON)
+     * quality      → score and comment (stored as JSON)
+     * createdAt    → timestamp, auto generated
+
+5. RAN THE MIGRATION
+   - npx prisma migrate dev --name init
+   - This created the actual Review table in PostgreSQL
+   - Also generated the Prisma client in src/generated/prisma
+
+6. SET UP PRISMA CLIENT (src/lib/prisma.ts)
+   - Prisma 7 requires PrismaPg adapter:
+     * npm i @prisma/adapter-pg
+     * import { PrismaClient } from "../generated/prisma/client"
+     * import { PrismaPg } from "@prisma/adapter-pg"
+     * Pass adapter with DATABASE_URL to PrismaClient
+
+7. UPDATED THE CONTROLLER
+   - After getting AI review, save it to DB using prisma.review.create()
+   - Response now includes the database id field
+   - Save to DB BEFORE sending response (important order!)
+
+8. ADDED GET /api/reviews ENDPOINT
+   - Returns all past reviews ordered by newest first
+   - Uses select to return only needed fields (not the full code)
+   - Added pagination-ready structure with count field
+
+---------------------------------------
+KEY THINGS LEARNED
+---------------------------------------
+
+- Prisma 7 changed a LOT from older versions (config, imports, adapter)
+- import order matters — dotenv.config() must run before any DB connection
+- Run migrations only when schema changes, not on every restart
+- prisma.review.create() = INSERT INTO SQL behind the scenes
+- prisma.review.findMany() = SELECT * FROM SQL behind the scenes
+- Always save to DB first, then send response
+
+---------------------------------------
+ERRORS WE HIT AND WHY
+---------------------------------------
+
+- "Cannot find module @prisma/client" 
+  → Prisma 7 generates to src/generated/prisma, not node_modules
+
+- "url is no longer supported in schema.prisma"
+  → Prisma 7 moved URL config to prisma.config.ts
+
+- "Expected 1 argument but got 0"
+  → Prisma 7 requires adapter passed to PrismaClient constructor
+
+- "Already in sync, no schema change found"
+  → Review model was missing from schema.prisma
+
+---------------------------------------
+CURRENT PROJECT STRUCTURE
+---------------------------------------
+
+AI_Code_Review_Tool/
+├── prisma/
+│   ├── schema.prisma         ← table definitions
+│   ├── migrations/           ← auto generated SQL history
+│   └── prisma.config.ts      ← DB connection config
+├── src/
+│   ├── index.ts              ← app entry point
+│   ├── generated/prisma/     ← auto generated Prisma client
+│   ├── lib/
+│   │   └── prisma.ts         ← single Prisma instance for whole app
+│   ├── routes/
+│   │   └── review.ts         ← POST /review, GET /reviews
+│   ├── controllers/
+│   │   └── reviewController.ts ← business logic
+│   └── services/
+│       └── aiService.ts      ← Groq AI integration
+├── .env                      ← GROQ_API_KEY, DATABASE_URL, PORT
+└── package.json
+
+---------------------------------------
+WORKING ENDPOINTS
+---------------------------------------
+
+POST /api/review
+  → validates code + language
+  → sends to Groq AI
+  → saves result to database
+  → returns review with database id
+
+GET /api/reviews
+  → returns all past reviews
+  → ordered by newest first
+  → includes count of total reviews
