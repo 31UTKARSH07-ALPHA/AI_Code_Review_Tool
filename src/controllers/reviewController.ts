@@ -68,9 +68,15 @@ export async function reviewCode(req: Request, res: Response) {
 }
 
 export async function getReviews(req: Request, res: Response) {
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 10;
+  const skip = (page - 1) * limit;
   try {
-    const reviews = await prisma.review.findMany({
+    const [reviews,total] = await Promise.all([
+      prisma.review.findMany({
       orderBy: { createdAt: "desc" },
+      skip,
+      take:limit,
       select: {
         id: true,
         language: true,
@@ -78,15 +84,35 @@ export async function getReviews(req: Request, res: Response) {
         quality: true,
         createdAt: true,
       },
-    });
+    }),
+      prisma.review.count(),
+    ])
 
     res.status(200).json({
-      count: reviews.length,
-      reviews,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      reviews
     });
   } catch (error) {
     res.status(500).json({
       error: "Failed to fetch reviews",
+    });
+  }
+}
+
+export async function getReviewById(req: Request, res: Response) {
+  const id = req.params.id as string;
+  //console.log(id);
+  try {
+    const review = await prisma.review.findUniqueOrThrow({
+      where: { id },
+    });
+    res.status(200).json({ review });
+  } catch (error) {
+    res.status(500).json({
+      error: "Failed to fetch review",
     });
   }
 }
