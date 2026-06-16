@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { z } from "zod";
 import { getCodeReview } from "../services/aiService";
 import prisma from "../lib/prisma";
+import { detectLanguage } from "../services/languageDetector";
 
 const reviewSchema = z.object({
   code: z.string().min(1, "Code cannot be empty"),
@@ -9,6 +10,7 @@ const reviewSchema = z.object({
 });
 
 export async function reviewCode(req: Request, res: Response) {
+
   const result = reviewSchema.safeParse(req.body);
 
   if (!result.success) {
@@ -18,9 +20,10 @@ export async function reviewCode(req: Request, res: Response) {
     });
   }
   const { code, language } = result.data;
-
+  const detectedLanguage =
+    language === "unknown" ? detectLanguage(code) : language;
   try {
-    const rawReview = await getCodeReview(code, language);
+    const rawReview = await getCodeReview(code, detectedLanguage);
     // remove markdown backticks AI sometimes adds
     const cleaned = rawReview
       .replace(/^```[\w]*\n?/, "") // remove opening ```json or ```
@@ -39,7 +42,7 @@ export async function reviewCode(req: Request, res: Response) {
     const saved = await prisma.review.create({
       data: {
         code,
-        language,
+        language: detectedLanguage,
         summary: review.summary,
         bugs: review.bugs,
         improvements: review.improvements,
@@ -49,7 +52,7 @@ export async function reviewCode(req: Request, res: Response) {
 
     res.status(200).json({
       id: saved.id,
-      language,
+      language: detectedLanguage,
       review,
     });
   } catch (error: any) {
@@ -72,28 +75,28 @@ export async function getReviews(req: Request, res: Response) {
   const limit = parseInt(req.query.limit as string) || 10;
   const skip = (page - 1) * limit;
   try {
-    const [reviews,total] = await Promise.all([
+    const [reviews, total] = await Promise.all([
       prisma.review.findMany({
-      orderBy: { createdAt: "desc" },
-      skip,
-      take:limit,
-      select: {
-        id: true,
-        language: true,
-        summary: true,
-        quality: true,
-        createdAt: true,
-      },
-    }),
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: limit,
+        select: {
+          id: true,
+          language: true,
+          summary: true,
+          quality: true,
+          createdAt: true,
+        },
+      }),
       prisma.review.count(),
-    ])
+    ]);
 
     res.status(200).json({
       total,
       page,
       limit,
       totalPages: Math.ceil(total / limit),
-      reviews
+      reviews,
     });
   } catch (error) {
     res.status(500).json({
