@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { z } from "zod";
 import { getCodeReview } from "../services/aiService";
 import prisma from "../lib/prisma";
+import logger from "../lib/logger";
 import { detectLanguage } from "../services/languageDetector";
 import {
   generateCacheKey,
@@ -31,7 +32,7 @@ export async function reviewCode(req: Request, res: Response) {
   const cached = await getCachedReview(cacheKey);
 
   if (cached) {
-    console.log("Cache hit! Returning cached review");
+    logger.info("Cache hit! Returning cached review",{language:detectedLanguage});
     res.status(200).json({
       cached: true,
       language: detectLanguage,
@@ -39,9 +40,7 @@ export async function reviewCode(req: Request, res: Response) {
     });
     return;
   }
-
-  console.log("Cache miss! Calling Groq AI...");
-
+  logger.info("Cache miss! Calling Groq AI...",{language,detectLanguage});
   try {
     const rawReview = await getCodeReview(code, detectedLanguage);
     // remove markdown backticks AI sometimes adds
