@@ -121,3 +121,23 @@ GET /api/reviews
   → returns all past reviews
   → ordered by newest first
   → includes count of total reviews
+
+  phase 3 CLI Implementation
+  You ran →  npm run cli -- review src/controllers/reviewController.ts
+
+ts-node executed src/cli/index.ts
+       ↓
+Commander parsed "review" as command
+Commander parsed "src/controllers/reviewController.ts" as argument
+       ↓
+fs.readFileSync read your actual file from disk
+path.extname extracted "ts" as the language
+       ↓
+fetch sent POST to http://localhost:8000/api/review
+       ↓
+Your Express server received it
+Groq AI reviewed it
+Saved to database
+Sent back structured JSON
+       ↓
+CLI printed it formatted in your terminal

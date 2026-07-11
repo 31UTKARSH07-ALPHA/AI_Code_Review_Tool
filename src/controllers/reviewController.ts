@@ -3,6 +3,11 @@ import { z } from "zod";
 import { getCodeReview } from "../services/aiService";
 import prisma from "../lib/prisma";
 import { detectLanguage } from "../services/languageDetector";
+import {
+  generateCacheKey,
+  getCachedReview,
+  setCachedReview,
+} from "../services/cacheService";
 
 const reviewSchema = z.object({
   code: z.string().min(1, "Code cannot be empty"),
@@ -10,7 +15,6 @@ const reviewSchema = z.object({
 });
 
 export async function reviewCode(req: Request, res: Response) {
-
   const result = reviewSchema.safeParse(req.body);
 
   if (!result.success) {
@@ -22,6 +26,22 @@ export async function reviewCode(req: Request, res: Response) {
   const { code, language } = result.data;
   const detectedLanguage =
     language === "unknown" ? detectLanguage(code) : language;
+
+  const cacheKey = generateCacheKey(code, detectedLanguage);
+  const cached = await getCachedReview(cacheKey);
+
+  if (cached) {
+    console.log("Cache hit! Returning cached review");
+    res.status(200).json({
+      cached: true,
+      language: detectLanguage,
+      review: cached,
+    });
+    return;
+  }
+
+  console.log("Cache miss! Calling Groq AI...");
+
   try {
     const rawReview = await getCodeReview(code, detectedLanguage);
     // remove markdown backticks AI sometimes adds
@@ -38,6 +58,8 @@ export async function reviewCode(req: Request, res: Response) {
         error: "AI returned invalid response , please try again",
       });
     }
+
+    await setCachedReview(cacheKey, review);
 
     const saved = await prisma.review.create({
       data: {
